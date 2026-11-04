@@ -81,6 +81,7 @@ export async function GET(request, { params }) {
  * Memperbarui data proyek milik pengguna yang sedang terautentikasi.
  */
 export async function PUT(request, { params }) {
+  let connection = null;
   try {
     const user = await getAuthenticatedUser(request);
 
@@ -152,8 +153,11 @@ export async function PUT(request, { params }) {
       );
     }
 
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     // 3. Jalankan query UPDATE dengan parameter binding dan proteksi user_id
-    await pool.query(
+    await connection.query(
       `UPDATE projects 
        SET title = ?, description = ?, repository_url = ?, live_url = ?, start_date = ?, end_date = ? 
        WHERE id = ? AND user_id = ?`,
@@ -169,12 +173,12 @@ export async function PUT(request, { params }) {
       ]
     );
 
-    // 4. Perbarui bukti proyek jika disertakan dalam payload
+    // 4. Perbarui bukti proyek secara atomik jika disertakan dalam payload
     if (data.evidences !== undefined) {
-      await pool.query('DELETE FROM project_evidences WHERE project_id = ?', [projectId]);
+      await connection.query('DELETE FROM project_evidences WHERE project_id = ?', [projectId]);
 
       for (const ev of data.evidences) {
-        await pool.query(
+        await connection.query(
           `INSERT INTO project_evidences (project_id, title, evidence_type, url) 
            VALUES (?, ?, ?, ?)`,
           [projectId, ev.title, ev.evidence_type, ev.url]
@@ -183,7 +187,7 @@ export async function PUT(request, { params }) {
     }
 
     // 5. Ambil data proyek yang telah diperbarui
-    const [updatedProjects] = await pool.query(
+    const [updatedProjects] = await connection.query(
       `SELECT id, user_id, title, description, repository_url, live_url, 
               DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date, 
               DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date, 
@@ -193,13 +197,15 @@ export async function PUT(request, { params }) {
       [projectId, user.id]
     );
 
-    const [evidences] = await pool.query(
+    const [evidences] = await connection.query(
       `SELECT id, project_id, title, evidence_type, url, created_at 
        FROM project_evidences 
        WHERE project_id = ? 
        ORDER BY id ASC`,
       [projectId]
     );
+
+    await connection.commit();
 
     return NextResponse.json(
       {
@@ -213,11 +219,18 @@ export async function PUT(request, { params }) {
       { status: 200 }
     );
   } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
     console.error('Error updating project:', error.message);
     return NextResponse.json(
       { status: 'error', message: 'Terjadi kesalahan pada server saat memperbarui proyek.' },
       { status: 500 }
     );
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 }
 

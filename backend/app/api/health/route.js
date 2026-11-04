@@ -16,7 +16,6 @@ export async function GET() {
         service: 'skillproof-backend',
         database: {
           status: 'connected',
-          name: process.env.DB_NAME || 'skillproof',
         },
         timestamp,
       },

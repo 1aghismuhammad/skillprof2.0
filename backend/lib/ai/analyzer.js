@@ -205,10 +205,14 @@ export async function executeProjectAnalysis({ project, evidences, customProvide
     );
 
     const analysisId = analysisResult.insertId;
+    const savedSkillsOutput = [];
 
-    // Simpan detail skill yang cocok ke tabel `ai_analysis_skills`
+    // 4.2 Simpan detail skill yang cocok ke tabel `ai_analysis_skills`
+    // serta integrasikan ke profil pengguna (`user_skills` & `user_skill_assessments`)
+    // secara atomik dalam transaksi yang sama.
     for (const item of matchedSkillsToSave) {
-      await connection.query(
+      // a. Insert ke ai_analysis_skills
+      const [insertAasResult] = await connection.query(
         `INSERT INTO ai_analysis_skills (analysis_id, skill_id, proficiency_level, score, reasoning) 
          VALUES (?, ?, ?, ?, ?)`,
         [
@@ -219,6 +223,87 @@ export async function executeProjectAnalysis({ project, evidences, customProvide
           item.reasoning,
         ]
       );
+      const analysisSkillId = insertAasResult.insertId;
+
+      let userSkillId;
+      let userSkillStatus;
+
+      // b. Integrasikan ke user_skills untuk pemilik proyek (project.user_id)
+      if (project.user_id) {
+        const [existingUserSkills] = await connection.query(
+          `SELECT id, status, proficiency_level, score 
+           FROM user_skills 
+           WHERE user_id = ? AND skill_id = ? 
+           LIMIT 1 FOR UPDATE`,
+          [project.user_id, item.skill_id]
+        );
+
+        if (existingUserSkills.length === 0) {
+          // Skill baru yang ditemukan AI: dibuat di user_skills dengan status needs_review,
+          // proficiency_level NULL, dan score NULL
+          const [newUserSkillResult] = await connection.query(
+            `INSERT INTO user_skills (user_id, skill_id, proficiency_level, score, status) 
+             VALUES (?, ?, NULL, NULL, 'needs_review')`,
+            [project.user_id, item.skill_id]
+          );
+          userSkillId = newUserSkillResult.insertId;
+          userSkillStatus = 'needs_review';
+        } else {
+          const current = existingUserSkills[0];
+          userSkillId = current.id;
+          userSkillStatus = current.status;
+
+          // Jika skill sudah aktif, jangan menimpa proficiency_level, score, atau status aktif yang sudah ada.
+          // Jika statusnya sebelumnya 'rejected', alihkan ke 'needs_review' untuk menampung assessment baru
+          if (current.status === 'rejected') {
+            await connection.query(
+              `UPDATE user_skills SET status = 'needs_review' WHERE id = ?`,
+              [userSkillId]
+            );
+            userSkillStatus = 'needs_review';
+          }
+        }
+
+        // c. Simpan assessment ke user_skill_assessments
+        // Pastikan analysis_skill_id tidak menghasilkan assessment duplikat
+        const [existingAssessments] = await connection.query(
+          `SELECT id FROM user_skill_assessments WHERE analysis_skill_id = ? LIMIT 1`,
+          [analysisSkillId]
+        );
+
+        let assessmentId;
+        if (existingAssessments.length === 0) {
+          const [insertAssResult] = await connection.query(
+            `INSERT INTO user_skill_assessments 
+             (user_skill_id, source_type, analysis_skill_id, proficiency_level, score, notes, review_status) 
+             VALUES (?, 'ai', ?, ?, ?, ?, 'pending')`,
+            [
+              userSkillId,
+              analysisSkillId,
+              item.proficiency_level,
+              item.score,
+              item.reasoning || null,
+            ]
+          );
+          assessmentId = insertAssResult.insertId;
+        } else {
+          assessmentId = existingAssessments[0].id;
+        }
+
+        savedSkillsOutput.push({
+          ...item,
+          analysis_skill_id: analysisSkillId,
+          user_skill_id: userSkillId,
+          user_skill_status: userSkillStatus,
+          assessment_id: assessmentId,
+          review_status: 'pending',
+        });
+      } else {
+        savedSkillsOutput.push({
+          ...item,
+          analysis_skill_id: analysisSkillId,
+        });
+      }
     }
 
     await connection.commit();
@@ -229,7 +314,7 @@ export async function executeProjectAnalysis({ project, evidences, customProvide
       summary: validatedOutput.summary,
       feedback: validatedOutput.feedback,
       status: 'completed',
-      skills: matchedSkillsToSave,
+      skills: savedSkillsOutput,
       uncataloged_skills: uncatalogedSkills,
       raw_response: rawResponsePayload,
       created_at: new Date().toISOString(),

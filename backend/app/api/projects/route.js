@@ -53,6 +53,7 @@ export async function GET(request) {
  * Membuat proyek baru untuk pengguna yang sedang login.
  */
 export async function POST(request) {
+  let connection = null;
   try {
     const user = await getAuthenticatedUser(request);
 
@@ -77,8 +78,11 @@ export async function POST(request) {
       );
     }
 
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     // 1. Simpan data proyek ke tabel projects menggunakan parameter binding
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO projects (user_id, title, description, repository_url, live_url, start_date, end_date) 
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -98,7 +102,7 @@ export async function POST(request) {
     const savedEvidences = [];
     if (data.evidences && data.evidences.length > 0) {
       for (const ev of data.evidences) {
-        const [evResult] = await pool.query(
+        const [evResult] = await connection.query(
           `INSERT INTO project_evidences (project_id, title, evidence_type, url) 
            VALUES (?, ?, ?, ?)`,
           [projectId, ev.title, ev.evidence_type, ev.url]
@@ -114,7 +118,7 @@ export async function POST(request) {
     }
 
     // 3. Ambil data proyek yang baru disimpan
-    const [newProjects] = await pool.query(
+    const [newProjects] = await connection.query(
       `SELECT id, user_id, title, description, repository_url, live_url, 
               DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date, 
               DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date, 
@@ -123,6 +127,8 @@ export async function POST(request) {
        WHERE id = ? AND user_id = ? LIMIT 1`,
       [projectId, user.id]
     );
+
+    await connection.commit();
 
     const projectData = {
       ...newProjects[0],
@@ -138,10 +144,17 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
     console.error('Error creating project:', error.message);
     return NextResponse.json(
       { status: 'error', message: 'Terjadi kesalahan pada server saat membuat proyek.' },
       { status: 500 }
     );
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 }

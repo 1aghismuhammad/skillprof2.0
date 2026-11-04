@@ -198,7 +198,7 @@ export class MockAIProvider extends BaseAIProvider {
     this.failureStatus = failureStatus;
   }
 
-  async analyzeProject({ prompt }) {
+  async analyzeProject({ prompt, systemPrompt }) {
     if (this.shouldFail) {
       const err = new Error('Simulasi kegagalan provider AI untuk pengujian.');
       err.status = this.failureStatus;
@@ -209,6 +209,86 @@ export class MockAIProvider extends BaseAIProvider {
       return typeof this.customResponse === 'string'
         ? this.customResponse
         : JSON.stringify(this.customResponse);
+    }
+
+    // Default mock response untuk rekomendasi jika prompt terindikasi untuk modul rekomendasi
+    if (prompt && (prompt.includes('TARGET KARIER PENGGUNA') || prompt.includes('KESENJANGAN KOMPETENSI') || prompt.includes('rekomendasi pembelajaran'))) {
+      const mockRecOutput = {
+        courses: [
+          {
+            title: 'Modern Web Development with React',
+            platform: 'Coursera',
+            skill_name: 'React',
+            level: 'intermediate',
+            description: 'Membangun aplikasi web frontend modern dengan komponen modular dan manajemen state.',
+            url: 'https://www.coursera.org',
+            estimated_duration: '4-6 minggu',
+          },
+          {
+            title: 'Advanced JavaScript Programming',
+            platform: 'freeCodeCamp',
+            skill_name: 'JavaScript',
+            level: 'intermediate',
+            description: 'Pendalaman konsep asinkron, closure, dan arsitektur modular JavaScript modern.',
+            url: 'https://www.freecodecamp.org',
+            estimated_duration: '30 jam',
+          },
+        ],
+        projects: [
+          {
+            title: 'Collaborative Task Management Dashboard',
+            description: 'Aplikasi manajemen tugas interaktif dengan arsitektur komponen terstruktur, filter status, dan autentikasi aman.',
+            difficulty_level: 'intermediate',
+            target_skills: ['React', 'JavaScript'],
+            key_features: [
+              'Autentikasi pengguna berbasis JWT',
+              'Manajemen state global dan filter data',
+              'Responsif dan ramah aksesibilitas',
+            ],
+            suggested_evidences: [
+              'Repositori GitHub dengan dokumentasi arsitektur',
+              'Demo aplikasi yang dapat diuji langsung',
+            ],
+            expected_outcome: 'Penguasaan implementasi UI komponen modular dan integrasi state interaktif.',
+          },
+          {
+            title: 'E-Commerce Product Catalog & Analytics',
+            description: 'Sistem katalog produk dinamis dengan integrasi API data dan visualisasi statistik penjualan.',
+            difficulty_level: 'intermediate',
+            target_skills: ['React', 'JavaScript'],
+            key_features: [
+              'Katalog produk terstruktur dengan paginasi',
+              'Integrasi REST API backend',
+              'Pengujian komponen dengan unit test',
+            ],
+            suggested_evidences: [
+              'Tautan repositori publik dengan riwayat commit rapi',
+              'Dokumentasi API dan bukti pengujian unit',
+            ],
+            expected_outcome: 'Kemampuan mengintegrasikan API backend ke dalam antarmuka web interaktif.',
+          },
+        ],
+      };
+      return JSON.stringify(mockRecOutput);
+    }
+
+    // Default mock response untuk portofolio jika prompt terindikasi untuk modul portofolio
+    if (prompt && (prompt.includes('Portfolio Synthesizer') || prompt.includes('draf portofolio kompetensi') || prompt.includes('DAFTAR PROYEK NYATA MILIK MAHASISWA') || (systemPrompt && systemPrompt.includes('Portfolio Synthesizer')))) {
+      const mockPortfolioOutput = {
+        title: 'Full-Stack Web Architect & JavaScript Specialist',
+        summary: 'Mahasiswa berdedikasi dengan rekam jejak nyata dalam pengembangan sistem web modern. Terampil dalam integrasi arsitektur REST API, manajemen database terstruktur, dan komponen UI modular.',
+        custom_bio: 'Fokus pada pengembangan aplikasi web berkinerja tinggi dengan kode bersih dan keamanan teruji.',
+        suggested_slug: 'ahmad-fauzi-portfolio',
+        selected_project_ids: [1, 2],
+        project_contributions: [
+          {
+            project_id: 1,
+            custom_description: 'Merancang arsitektur backend REST API dan struktur data MySQL dengan performa tinggi serta dokumentasi lengkap.',
+          },
+        ],
+        selected_skill_ids: [1, 2],
+      };
+      return JSON.stringify(mockPortfolioOutput);
     }
 
     // Default mock response konservatif
@@ -239,12 +319,25 @@ export class MockAIProvider extends BaseAIProvider {
   }
 }
 
+let globalOverrideProvider = null;
+
+/**
+ * Mengatur instance AI provider global untuk simulasi pengujian
+ */
+export function setGlobalAIProvider(provider) {
+  globalOverrideProvider = provider;
+}
+
 /**
  * Factory function untuk mendapatkan instance AI Provider berdasarkan environment
  */
 export function getAIProvider(overrideProvider = null) {
   if (overrideProvider) {
     return overrideProvider;
+  }
+
+  if (globalOverrideProvider) {
+    return globalOverrideProvider;
   }
 
   const providerType = (process.env.AI_PROVIDER || 'gemini').toLowerCase();

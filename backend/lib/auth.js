@@ -130,6 +130,16 @@ export async function getAuthenticatedUser(request) {
   }
 
   if (!token) {
+    // Fallback parsing dari header Authorization: Bearer <token>
+    if (typeof request.headers?.get === 'function') {
+      const authHeader = request.headers.get('authorization') || '';
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+      }
+    }
+  }
+
+  if (!token) {
     return null;
   }
 

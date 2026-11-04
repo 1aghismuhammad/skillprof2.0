@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic';
  * Meminta analisis kompetensi baru untuk proyek milik pengguna yang sedang terautentikasi.
  */
 export async function POST(request, { params }) {
+  let lockConnection = null;
+  let lockedProjectId = null;
+
   try {
     const user = await getAuthenticatedUser(request);
 
@@ -91,15 +94,19 @@ export async function POST(request, { params }) {
       }
     }
 
-    // 4. Cegah duplicate submission request yang berulang dalam selang waktu singkat (pending check)
-    const [pendingRows] = await pool.query(
-      `SELECT id FROM ai_analyses 
-       WHERE project_id = ? AND status = 'pending' AND created_at >= NOW() - INTERVAL 2 MINUTE 
-       LIMIT 1`,
-      [projectId]
+    // 4. Cegah duplicate submission request dan analisis simultan menggunakan MariaDB User Lock
+    // GET_LOCK dengan timeout 0 akan langsung mengembalikan 0 (gagal lock)
+    // jika permintaan analisis untuk proyek ini sedang diproses oleh koneksi lain.
+    lockConnection = await pool.getConnection();
+    const lockKey = `skillproof_project_analyze_${projectId}`;
+    const [lockRows] = await lockConnection.query(
+      'SELECT GET_LOCK(?, 0) AS acquired',
+      [lockKey]
     );
 
-    if (pendingRows.length > 0) {
+    if (!lockRows[0] || lockRows[0].acquired !== 1) {
+      lockConnection.release();
+      lockConnection = null;
       return NextResponse.json(
         {
           status: 'error',
@@ -108,6 +115,7 @@ export async function POST(request, { params }) {
         { status: 409 }
       );
     }
+    lockedProjectId = projectId;
 
     // 5. Jalankan orkestrasi analisis AI dan persistensi transaksional
     const result = await executeProjectAnalysis({
@@ -164,5 +172,14 @@ export async function POST(request, { params }) {
       },
       { status: 500 }
     );
+  } finally {
+    if (lockConnection && lockedProjectId) {
+      try {
+        await lockConnection.query('SELECT RELEASE_LOCK(?)', [`skillproof_project_analyze_${lockedProjectId}`]);
+      } catch (err) {
+        console.error('Error releasing analyze lock:', err.message);
+      }
+      lockConnection.release();
+    }
   }
 }
