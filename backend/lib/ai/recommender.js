@@ -76,17 +76,25 @@ export function findCanonicalPlatform(platformInput) {
  */
 export function findCanonicalSkill(skillInput, gapSkillNames) {
   if (!skillInput || typeof skillInput !== 'string') return null;
-  const clean = skillInput.trim().toLowerCase();
+
+  const normalize = (value) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/\s*\([^)]*\)\s*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const clean = normalize(skillInput);
 
   for (const name of gapSkillNames) {
-    if (name.toLowerCase() === clean) {
+    if (normalize(name) === clean) {
       return name;
     }
   }
 
   return null;
 }
-
 /**
  * Memvalidasi dan membersihkan URL kursus dengan fallback ke landing page platform
  */
