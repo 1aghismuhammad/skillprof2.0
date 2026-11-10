@@ -2,11 +2,15 @@
   "name": "backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --loader ./tests/loader.mjs --test tests/*.test.mjs",
+    "db:migrate": "node database/migrate.mjs",
+    "db:seed": "node database/seed.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

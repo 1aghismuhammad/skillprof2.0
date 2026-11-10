@@ -58,6 +58,8 @@ coverage/
 .nyc_output
 
 # 6. Caches
+.codebase-mcp/
+**/.codebase-mcp/
 .cache/
 **/.cache/
 .turbo/
@@ -91,3 +93,17 @@ next-env.d.ts
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# 11. Local AI Agents, Instructions & Workflows
+.hermes/
+**/.hermes/
+.claude/
+**/.claude/
+.cursor/
+**/.cursor/
+.cursorrules
+CLAUDE.md
+graphify-out/
+**/graphify-out/
+docs/ai/
+docs/tickets/
