@@ -34,9 +34,6 @@ CREATE TABLE IF NOT EXISTS user_skill_assessments (
         REFERENCES user_skills(id) ON DELETE CASCADE,
     CONSTRAINT fk_user_skill_assessments_analysis FOREIGN KEY (analysis_skill_id)
         REFERENCES ai_analysis_skills(id) ON DELETE SET NULL,
-    CONSTRAINT chk_user_skill_assessments_source CHECK (
-        source_type = 'ai' OR analysis_skill_id IS NULL
-    ),
     CONSTRAINT chk_user_skill_assessments_score CHECK (score BETWEEN 0 AND 100),
     INDEX idx_user_skill_assessments_review (user_skill_id, review_status),
     INDEX idx_user_skill_assessments_source (source_type)

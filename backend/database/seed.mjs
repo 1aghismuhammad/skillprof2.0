@@ -21,9 +21,10 @@ async function runSeed() {
     console.log('-> Mengeksekusi database/seed.sql...');
 
     const statements = sqlContent
-      .split(/;\s*$/m)
+      .replace(/--.*$/gm, '')
+      .split(';')
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith('--'));
+      .filter((s) => s.length > 0);
 
     for (const statement of statements) {
       if (statement.trim()) {
